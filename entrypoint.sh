@@ -15,6 +15,19 @@ if [ -n "${SSH_AUTHORIZED_KEY}" ]; then
   echo "[INFO] SSH authorized key installed for root."
 fi
 
+# ── Harden sshd config at runtime ────────────────────────────────────────────
+# Ubuntu 24.04 ships /etc/ssh/sshd_config.d/50-cloud-init.conf with
+# PasswordAuthentication yes which overrides everything. We remove it
+# and write our own config as 00- so it is always loaded first.
+rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
+cat > /etc/ssh/sshd_config.d/00-hardened.conf << 'EOF'
+PermitRootLogin prohibit-password
+PubkeyAuthentication yes
+PasswordAuthentication no
+AuthorizedKeysFile .ssh/authorized_keys
+EOF
+echo "[INFO] sshd hardened config applied (50-cloud-init.conf removed)."
+
 # ── Start sshd ────────────────────────────────────────────────────────────────
 echo "[INFO] Starting sshd..."
 /usr/sbin/sshd
@@ -55,9 +68,9 @@ netbird down 2>/dev/null || true
 
 # ── Bring up NetBird peer ─────────────────────────────────────────────────────
 ARGS="--setup-key ${NB_SETUP_KEY}"
+ARGS="${ARGS} --disable-ssh-auth"
 [ -n "${NB_MANAGEMENT_URL}" ] && ARGS="${ARGS} --management-url ${NB_MANAGEMENT_URL}"
 [ -n "${NB_HOSTNAME}" ]       && ARGS="${ARGS} --hostname ${NB_HOSTNAME}"
-
 echo "[INFO] Bringing up NetBird peer..."
 netbird up ${ARGS}
 
