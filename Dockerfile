@@ -45,4 +45,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 VOLUME ["/var/lib/netbird"]
 
+# ensure no NetBird state is baked into the image
+RUN rm -rf /var/lib/netbird/*
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

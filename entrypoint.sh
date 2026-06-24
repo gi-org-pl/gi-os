@@ -16,63 +16,48 @@ if [ -n "${SSH_AUTHORIZED_KEY}" ]; then
 fi
 
 # ── Harden sshd config at runtime ────────────────────────────────────────────
-# Ubuntu 24.04 ships /etc/ssh/sshd_config.d/50-cloud-init.conf with
-# PasswordAuthentication yes which overrides everything. We remove it
-# and write our own config as 00- so it is always loaded first.
 rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
-cat > /etc/ssh/sshd_config.d/00-hardened.conf << 'EOF'
+cat > /etc/ssh/sshd_config.d/00-hardened.conf << 'SSHEOF'
 PermitRootLogin prohibit-password
 PubkeyAuthentication yes
 PasswordAuthentication no
 AuthorizedKeysFile .ssh/authorized_keys
-EOF
-echo "[INFO] sshd hardened config applied (50-cloud-init.conf removed)."
+SSHEOF
+echo "[INFO] sshd hardened config applied."
 
 # ── Start sshd ────────────────────────────────────────────────────────────────
 echo "[INFO] Starting sshd..."
 /usr/sbin/sshd
 
+# ── Wipe any stale NetBird state baked into the image ────────────────────────
+# Ensures each container start generates a fresh peer identity.
+echo "[INFO] Clearing stale NetBird state..."
+rm -f /var/lib/netbird/default.json
+rm -f /var/lib/netbird/state.json
+rm -f /var/lib/netbird/resolv.conf
+
 # ── Graceful shutdown ─────────────────────────────────────────────────────────
 cleanup() {
-  echo "[INFO] Shutting down NetBird peer..."
-  netbird down
-  echo "[INFO] Stopping NetBird daemon..."
-  kill "${DAEMON_PID}" 2>/dev/null || true
-  wait "${DAEMON_PID}" 2>/dev/null || true
+  echo "[INFO] Shutting down NetBird..."
+  kill "${NB_PID}" 2>/dev/null || true
+  wait "${NB_PID}" 2>/dev/null || true
   exit 0
 }
 trap cleanup SIGTERM SIGINT
 
-# ── Start NetBird daemon ──────────────────────────────────────────────────────
-echo "[INFO] Starting NetBird daemon..."
-netbird service run &
-DAEMON_PID=$!
-
-# ── Wait for daemon socket ────────────────────────────────────────────────────
-SOCKET="/var/run/netbird.sock"
-TIMEOUT=30
-ELAPSED=0
-echo "[INFO] Waiting for NetBird daemon socket..."
-until [ -S "${SOCKET}" ]; do
-  if [ "${ELAPSED}" -ge "${TIMEOUT}" ]; then
-    echo "[ERROR] Timed out waiting for ${SOCKET}" >&2
-    exit 1
-  fi
-  sleep 1
-  ELAPSED=$((ELAPSED + 1))
-done
-echo "[INFO] Daemon is ready."
-
-# ── Disconnect first to ensure flags are applied fresh ───────────────────────
-netbird down 2>/dev/null || true
-
-# ── Bring up NetBird peer ─────────────────────────────────────────────────────
+# ── Build netbird up args ─────────────────────────────────────────────────────
 ARGS="--setup-key ${NB_SETUP_KEY}"
 ARGS="${ARGS} --disable-ssh-auth"
+ARGS="${ARGS} --foreground-mode"
 [ -n "${NB_MANAGEMENT_URL}" ] && ARGS="${ARGS} --management-url ${NB_MANAGEMENT_URL}"
 [ -n "${NB_HOSTNAME}" ]       && ARGS="${ARGS} --hostname ${NB_HOSTNAME}"
-echo "[INFO] Bringing up NetBird peer..."
-netbird up ${ARGS}
+
+# ── Start NetBird directly (foreground, no daemon) ────────────────────────────
+# --foreground-mode: netbird up blokuje, nie potrzeba osobnego `netbird service run`
+# Każdy kontener dostaje nowy PrivateKey bo default.json nie istnieje.
+echo "[INFO] Starting NetBird peer (foreground)..."
+netbird up ${ARGS} &
+NB_PID=$!
 
 echo "[INFO] NetBird peer is up. Container will run until stopped."
-wait "${DAEMON_PID}"
+wait "${NB_PID}"
