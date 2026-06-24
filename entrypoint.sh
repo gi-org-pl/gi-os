@@ -6,7 +6,11 @@ if [ -z "${NB_SETUP_KEY}" ]; then
   exit 1
 fi
 
-# ── SSH authorized key setup ──────────────────────────────────────────────────
+# Unlock Alpine's locked-by-default root account so sshd accepts pubkey auth.
+# https://gitlab.alpinelinux.org/alpine/aports/-/issues/10806
+# https://www.tenable.com/blog/cve-2019-5021-hard-coded-null-root-password-found-in-alpine-linux-docker-images
+sed -i 's/^root:!/root:*/' /etc/shadow
+
 if [ -n "${SSH_AUTHORIZED_KEY}" ]; then
   mkdir -p /root/.ssh
   chmod 700 /root/.ssh
@@ -15,20 +19,9 @@ if [ -n "${SSH_AUTHORIZED_KEY}" ]; then
   echo "[INFO] SSH authorized key installed for root."
 fi
 
-# ── Harden sshd config at runtime ────────────────────────────────────────────
-# Ubuntu 24.04 ships /etc/ssh/sshd_config.d/50-cloud-init.conf with
-# PasswordAuthentication yes which overrides everything. We remove it
-# and write our own config as 00- so it is always loaded first.
-rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
-cat > /etc/ssh/sshd_config.d/00-hardened.conf << 'EOF'
-PermitRootLogin prohibit-password
-PubkeyAuthentication yes
-PasswordAuthentication no
-AuthorizedKeysFile .ssh/authorized_keys
-EOF
-echo "[INFO] sshd hardened config applied (50-cloud-init.conf removed)."
+# Fresh Alpine images ship without host keys.
+ssh-keygen -A
 
-# ── Start sshd ────────────────────────────────────────────────────────────────
 echo "[INFO] Starting sshd..."
 /usr/sbin/sshd
 

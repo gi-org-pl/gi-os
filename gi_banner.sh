@@ -1,5 +1,5 @@
 #!/bin/bash
-# /etc/update-motd.d/01-gi-banner
+# /etc/profile.d/01-gi-banner.sh
 
 R='\033[1;31m'   # bright red
 B='\033[1m'      # bold
@@ -28,4 +28,4 @@ if [ -n "$NB_FQDN" ]; then
   printf "  ${D}Your public URL:${N}  ${C}%s${N}\n" "$NB_FQDN"
 fi
 
-printf "\n"
+printf "\n  Welcome to Alpine\n\n"
