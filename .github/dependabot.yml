@@ -1,0 +1,17 @@
+version: 2
+
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: daily
+
+updates:
+  - package-ecosystem: docker
+    directory: /
+    patterns: ['*']
+    multi-ecosystem-group: dependencies
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
